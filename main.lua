@@ -21,7 +21,6 @@ Thumbnail_interval_in_sec = 5
 Sprite_generated = false
 Platform = nil
 
--- @todo: Ensure ffmpeg exists
 local function on_playback_start()
     local filename = mp.get_property("filename")
     print(filename)
@@ -50,7 +49,13 @@ local function on_playback_start()
     -- Generate sprite sheet only if it doesnt exists
     local local_sprite = io.open(Sprite_sheet_name, "rb")
     if not local_sprite then
-        -- Optimise further by generating multi sprite sheet paralelly using "ss -i"
+        if not helper.isFFmpegAvailable() then
+            local error_message = "Unable to find ffmpeg. Please install/add it to your PATH to use the script."
+            print(error_message)
+            mp.osd_message(error_message)
+            return nil
+        end
+        -- @todo: Optimise further by generating multi sprite sheet paralelly using "ss -i"
         mp.command_native_async({
                 name = "subprocess",
                 playback_only = false,
@@ -79,8 +84,10 @@ local function on_playback_start()
 end
 
 
+-- Delete temp prev file on playback end
+-- @todo: also to be done when player quit
 local function on_playback_end()
-    -- Delete temp prev file
+    os.remove(Temp_prev_name)
 end
 
 mp.register_event("start-file", on_playback_start)
