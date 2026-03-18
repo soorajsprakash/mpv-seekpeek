@@ -20,6 +20,7 @@ Preview_img_h = 100
 Thumbnail_interval_in_sec = 5
 Sprite_generated = false
 Platform = nil
+Main_sprite = nil
 
 local function on_playback_start()
     local filename = mp.get_property("filename")
@@ -47,8 +48,8 @@ local function on_playback_start()
     )
     local t1 = os.time()
     -- Generate sprite sheet only if it doesnt exists
-    local local_sprite = io.open(Sprite_sheet_name, "rb")
-    if not local_sprite then
+    Main_sprite = io.open(Sprite_sheet_name, "rb")
+    if not Main_sprite then
         if not helper.isFFmpegAvailable() then
             local error_message = "Unable to find ffmpeg. Please install/add it to your PATH to use the script."
             print(error_message)
@@ -77,8 +78,6 @@ local function on_playback_start()
         Sprite_generated = true
     end
 
-    if local_sprite then local_sprite:close() end
-
     -- Set fullscreen
     mp.set_property("fullscreen", "yes")
 end
@@ -87,6 +86,7 @@ end
 -- Delete temp prev file on playback end
 -- @todo: also to be done when player quit
 local function on_playback_end()
+    if Main_sprite then Main_sprite:close() end
     os.remove(Temp_prev_name)
 end
 
@@ -191,9 +191,7 @@ function GetPreviewFromSpriteSheet(timestamp)
     local byte_start = y_off * full_stride + x_off * bytes_per_pixel
 
     -- @todo: Only load a single row of the sprite sheet at a time to reduce memory usage and speed up processing.
-    -- @todo: Need to consider opening a single time while starting playback
-    local sprite = io.open(Sprite_sheet_name, "rb")
-    if not sprite then
+    if not Main_sprite then
         print("Error: Could not open " .. Sprite_sheet_name)
         return false
     end
@@ -201,15 +199,15 @@ function GetPreviewFromSpriteSheet(timestamp)
     local temp = io.open(Temp_prev_name, "wb")
     if not temp then
         print("Error: Could not open " .. Temp_prev_name)
-        sprite:close()
+        Main_sprite:close()
         return false
     end
 
     -- Extract 100 rows
     for i = 0, Preview_img_h - 1 do
         local row_byte_start = byte_start + (i * full_stride)
-        sprite:seek("set", row_byte_start)
-        local full_row_data = sprite:read(full_stride)
+        Main_sprite:seek("set", row_byte_start)
+        local full_row_data = Main_sprite:read(full_stride)
         if #full_row_data ~= full_stride then
             print("Error: Incomplete row read at row " .. (y_off + i))
             break
@@ -219,7 +217,6 @@ function GetPreviewFromSpriteSheet(timestamp)
         temp:write(tile_row_data)
     end
 
-    sprite:close()
     temp:close()
     return true
 end
