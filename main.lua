@@ -12,15 +12,17 @@ Duration = 0
 Last_overlay_id = math.random(0, 63)
 Cache_dir = nil
 Sprite_sheet_name = ""
-Temp_prev_name = ""
-Sprite_grid_rows = 30
-Sprite_grid_cols = 30
+Temp_prev_name = "temp.bgra"
+Sprite_grid_rows = 15
+Sprite_grid_cols = 10
 Preview_img_w = 240
 Preview_img_h = 100
 Thumbnail_interval_in_sec = 5
 Sprite_generated = false
 Platform = nil
-Main_sprite = nil
+Main_sprite = 5
+Total_sprite_parts = 0
+Sprites = {}
 
 local function on_playback_start()
     local filename = mp.get_property("filename")
@@ -35,7 +37,7 @@ local function on_playback_start()
     Sprite_sheet_name = Cache_dir .. sprite_name
 
     local temp_prev_name = string.format("/%s-temp.bgra", filename)
-    Temp_prev_name = Cache_dir .. temp_prev_name
+    -- Temp_prev_name = Cache_dir .. temp_prev_name
 
     print("Beginning script----------------^^")
     local vf = string.format(
@@ -43,12 +45,12 @@ local function on_playback_start()
         Thumbnail_interval_in_sec,
         Preview_img_w,
         Preview_img_h,
-        Sprite_grid_rows,
-        Sprite_grid_cols
+        Sprite_grid_cols,
+        Sprite_grid_rows
     )
     local t1 = os.time()
     -- Generate sprite sheet only if it doesnt exists
-    Main_sprite = io.open(Sprite_sheet_name, "rb")
+    -- Main_sprite = io.open(Sprite_sheet_name, "rb")
     if not Main_sprite then
         if not helper.isFFmpegAvailable() then
             local error_message = "Unable to find ffmpeg. Please install/add it to your PATH to use the script."
@@ -61,7 +63,20 @@ local function on_playback_start()
                 name = "subprocess",
                 playback_only = false,
                 capture_stdout = true,
-                args = { "ffmpeg", "-hide_banner", "-loglevel", "panic", "-i", filename, "-vf", vf, "-fps_mode", "passthrough", "-f", "rawvideo", Sprite_sheet_name },
+                args = {
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel", "panic",
+                    "-i", filename,
+                    "-vf", vf,
+                    "-fps_mode", "passthrough",
+                    "-start_number", "0",
+                    -- "-f", "rawvideo",
+                    "-f", "image2",
+                    "-pix_fmt", "bgra",
+                    "sprite_%d.bgra",
+                    "-y"
+                },
             },
             function(val, suc, err)
                 print("@@@@@@@@@@@@@@@@@@@@@")
@@ -69,25 +84,42 @@ local function on_playback_start()
                 local time_dif = os.difftime(t2, t1)
                 Sprite_generated = true
                 local message = string.format("Finished generating sprite in %d seconds", time_dif)
+                print(message)
                 mp.osd_message(message)
                 print("@@@@@@@@@@@@@@@@@@@@@")
+                CacheSpritesInMemory()
             end
         )
     else
         print("Pre generated sprite found")
         Sprite_generated = true
+        -- CacheSpritesInMemory()
     end
 
     -- Set fullscreen
     mp.set_property("fullscreen", "yes")
 end
 
+function CacheSpritesInMemory()
+    print("Total_sprite_parts: " .. Total_sprite_parts)
+    for i = 0, Total_sprite_parts - 1 do
+        local name = string.format("sprite_%d.bgra", i)
+        print("[[ name ]]: " .. name)
 
+        local f = io.open(name, "rb")
+        if not f then
+            print("Failed to open sprite:", name)
+        else
+            Sprites[i] = f
+        end
+    end
+    print("Caching donee.................................")
+end
 -- Delete temp prev file on playback end
 -- @todo: also to be done when player quit
 local function on_playback_end()
-    if Main_sprite then Main_sprite:close() end
-    os.remove(Temp_prev_name)
+    -- if Main_sprite then Main_sprite:close() end
+    -- os.remove(Temp_prev_name)
 end
 
 mp.register_event("start-file", on_playback_start)
@@ -117,6 +149,20 @@ end
 mp.observe_property("duration", "number", function()
     local value = mp.get_property("duration")
     Duration = tonumber(value)
+    if Duration then
+        print("Duration: " .. Duration .. " s")
+        Total_sprite_parts = math.ceil(Duration / (Thumbnail_interval_in_sec * Sprite_grid_rows * Sprite_grid_cols))
+        print("Total sprite parts needed: " .. Total_sprite_parts)
+        if Sprite_generated then
+            CacheSpritesInMemory()
+            print("%%%%%%%%%%%%%%%")
+            for index, res in ipairs(Sprites) do
+                print("i: " .. index)
+                print(res)
+            end
+            print("%%%%%%%%%%%%%%%")
+        end
+    end
 end)
 
 
@@ -134,14 +180,15 @@ mp.observe_property("mouse-pos", "native", function(_, pos)
             * Show the preview
             * hide the preview on x change
         ]]
-        -- @todo: Also only do this if diff bw currentx and last x is more than 5?
         if (Sprite_generated and Duration and Duration > 0) then
             local relative_x = (mouse_x - Seekbar_x_start) / (Seekbar_x_end - Seekbar_x_start)
             local timestamp = relative_x * Duration
             Last_overlay_id = 5
             local overlay_x, overlay_y = GetOverlayPosition(mouse_x)
 
-            local res = GetPreviewFromSpriteSheet(timestamp)
+            local res = GetPreviewTileData(timestamp)
+            print("************")
+            print(res)
             if (res) then
                 ShowPreviewOverlay(overlay_x, overlay_y)
             else
@@ -172,51 +219,72 @@ function ShowPreviewOverlay(x, y)
     }, function() print("Shown overlay") end)
 end
 
-function GetPreviewFromSpriteSheet(timestamp)
-    -- local tile_index = timestamp % (Sprite_grid_rows * Sprite_grid_cols)
-    local tile_index = math.floor(timestamp / Thumbnail_interval_in_sec)
-    local full_w = Preview_img_w * Sprite_grid_cols     -- 240 * 20 = 4800
-    local full_h = Preview_img_h * Sprite_grid_rows     -- 100 * 20 = 2000
-    local bytes_per_pixel = 4                           -- BGRA standard (yeah its heavy)
-    local full_stride = full_w * bytes_per_pixel        -- 19200 (stride size is usually 4 x width as per mpv doc)
-    local tile_stride = Preview_img_w * bytes_per_pixel -- 960
 
-    -- Find the row and column
-    local row_num = math.floor(tile_index / Sprite_grid_cols)
-    local col_num = tile_index % Sprite_grid_cols
+--[[
+* Function to get the preview tile from the sprite sheet based on the timestamp.
+* Steps:
+* Calculate the sprite index/name based on the timestamp and thumbnail interval
+* Calculate the row and column number based on the tile index and sprite grid configuration
+]]
+function CalculatePreviewDataPosition(timestamp)
+    local global_index = math.floor(timestamp / Thumbnail_interval_in_sec) -- new
+    local sprite_index = math.floor(global_index / (Sprite_grid_rows * Sprite_grid_cols))
+    local local_index  = global_index % (Sprite_grid_rows * Sprite_grid_cols)
+    local row          = math.floor(local_index / Sprite_grid_cols)
+    local col          = math.floor(local_index % Sprite_grid_cols)
+    local x_pos        = col * Preview_img_w
+    local y_pos        = row * Preview_img_h
+    print("sprite index: " .. sprite_index)
+    print("x position: " .. x_pos)
+    print("y position: " .. y_pos)
+    return {
+        x_pos = x_pos,
+        y_pos = y_pos,
+        row = row,
+        col = col,
+        sprite_index = sprite_index,
+    }
+end
 
-    -- Byte offset to top-left of tile
-    local y_off = row_num * Preview_img_h -- pixel y
-    local x_off = col_num * Preview_img_w -- pixel x
-    local byte_start = y_off * full_stride + x_off * bytes_per_pixel
-
-    -- @todo: Only load a single row of the sprite sheet at a time to reduce memory usage and speed up processing.
-    if not Main_sprite then
-        print("Error: Could not open " .. Sprite_sheet_name)
-        return false
-    end
-
+function GetPreviewTileData(timestamp)
+    local prev_data = CalculatePreviewDataPosition(timestamp)
+    local sprite_index = prev_data.sprite_index
+    local sprite_name = string.format("sprite_%d.bgra", sprite_index)
+    print("Sprite_name: " .. sprite_name)
     local temp = io.open(Temp_prev_name, "wb")
     if not temp then
         print("Error: Could not open " .. Temp_prev_name)
-        Main_sprite:close()
         return false
     end
 
-    -- Extract 100 rows
+    local x_off = prev_data.col * Preview_img_w
+    local y_off = prev_data.row * Preview_img_h
+    local full_w = Preview_img_w * Sprite_grid_cols
+
+    local bytes_per_pixel = 4                    -- BGRA standard (yeah its heavy)
+    local full_stride = full_w * bytes_per_pixel -- 19200 (stride size is usually 4 x width as per mpv doc)
+    local row_bytes = Preview_img_w * bytes_per_pixel
+    local byte_start = y_off * full_stride
+
+    print("//////////////////////////////////////////////////////////")
     for i = 0, Preview_img_h - 1 do
-        local row_byte_start = byte_start + (i * full_stride)
-        Main_sprite:seek("set", row_byte_start)
-        local full_row_data = Main_sprite:read(full_stride)
-        if #full_row_data ~= full_stride then
-            print("Error: Incomplete row read at row " .. (y_off + i))
+        local row_start = byte_start + (i * full_stride)
+        print("row_start: " .. row_start)
+        local pixel_start = row_start + x_off * bytes_per_pixel
+        print("pixel_start: " .. pixel_start)
+
+
+        Sprites[sprite_index]:seek("set", pixel_start)
+        local tile_row = Sprites[sprite_index]:read(row_bytes)
+
+        if not tile_row or #tile_row ~= row_bytes then
+            print("Error: Incomplete row read")
             break
         end
-        local tile_row_data = string.sub(full_row_data, x_off * bytes_per_pixel + 1,
-            (x_off + Preview_img_w) * bytes_per_pixel)
-        temp:write(tile_row_data)
+        temp:write(tile_row)
     end
 
     temp:close()
-    return true
+
 end
+
