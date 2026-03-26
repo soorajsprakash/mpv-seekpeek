@@ -24,7 +24,8 @@ Main_sprite = nil
 
 local function on_playback_start()
     local filename = mp.get_property("filename")
-    print(filename)
+    local filepath = mp.get_property("path")
+    print("filepath: " .. filepath)
 
     Platform = mp.get_property("platform")
     print(Platform)
@@ -61,13 +62,16 @@ local function on_playback_start()
                 name = "subprocess",
                 playback_only = false,
                 capture_stdout = true,
-                args = { "ffmpeg", "-hide_banner", "-loglevel", "panic", "-i", filename, "-vf", vf, "-fps_mode", "passthrough", "-f", "rawvideo", Sprite_sheet_name },
+                args = { "ffmpeg", "-hide_banner", "-loglevel", "panic", "-i", filepath, "-vf", vf, "-fps_mode", "passthrough", "-f", "rawvideo", Sprite_sheet_name },
             },
             function(val, suc, err)
                 print("@@@@@@@@@@@@@@@@@@@@@")
                 local t2 = os.time()
                 local time_dif = os.difftime(t2, t1)
-                Sprite_generated = true
+                Main_sprite = io.open(Sprite_sheet_name, "rb")
+                if Main_sprite then
+                    Sprite_generated = true
+                end
                 local message = string.format("Finished generating sprite in %d seconds", time_dif)
                 mp.osd_message(message)
                 print("@@@@@@@@@@@@@@@@@@@@@")

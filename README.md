@@ -93,3 +93,4 @@ YouTube's storyboard system works identically: the player fetches a pre-generate
 - [ ] Enable robust multi-resolution support
 - [ ] Add customizable keybindings
 - [ ] Improve preview accuracy
+- [ ] Support low accuracy - high speed sprite generation mode
