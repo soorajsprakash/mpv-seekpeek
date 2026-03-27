@@ -88,7 +88,7 @@ YouTube's storyboard system works identically: the player fetches a pre-generate
 
 ## 🛠️ TODO
 
-- [ ] Add Windows OS support
+- [x] Add Windows OS support
 - [ ] Implement user configuration support
 - [ ] Enable robust multi-resolution support
 - [ ] Add customizable keybindings

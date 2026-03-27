@@ -32,11 +32,11 @@ local function on_playback_start()
     Cache_dir = helper.getCacheDir()
     print(Cache_dir)
 
-    local sprite_name = string.format("/%s-sprite.bgra", filename)
-    Sprite_sheet_name = Cache_dir .. sprite_name
+    local sprite_name = string.format("%s-sprite.bgra", filename)
+    Sprite_sheet_name = helper.joinPath(Cache_dir, sprite_name)
 
-    local temp_prev_name = string.format("/%s-temp.bgra", filename)
-    Temp_prev_name = Cache_dir .. temp_prev_name
+    local temp_prev_name = string.format("%s-temp.bgra", filename)
+    Temp_prev_name = helper.joinPath(Cache_dir, temp_prev_name)
 
     print("Beginning script----------------^^")
     local vf = string.format(

@@ -3,9 +3,19 @@ local helper = {}
 local mp = require("mp")
 local utils = require("mp.utils")
 
+-- Normalize path using mpv's built-in normalize-path
+function helper.normalizePath(path)
+    return mp.command_native({ "normalize-path", path })
+end
+
+-- Join path components and normalize for the current platform
+function helper.joinPath(base, name)
+    return helper.normalizePath(utils.join_path(base, name))
+end
+
 -- Get the cache directory path
 function helper.getCacheDir()
-    return mp.command_native({ "expand-path", "~~cache/" })
+    return helper.normalizePath(mp.command_native({ "expand-path", "~~cache/" }))
 end
 
 -- Check if ffmpeg is available in the system
