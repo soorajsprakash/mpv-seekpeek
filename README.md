@@ -42,6 +42,7 @@ Download the files and place them in the appropriate mpv scripts directory as pe
 | OS        | Location                 |
 | --------- | ------------------------ |
 | GNU/Linux | `~/.config/mpv/scripts/` |
+| Windows | `C:/Users/username/AppData/Roaming/mpv/scripts/` |
 
 Both `main.lua` and `helper.lua` must be present inside the folder.
 
@@ -56,6 +57,73 @@ Both `main.lua` and `helper.lua` must be present inside the folder.
 5. From that point, hover your cursor over the seekbar to see thumbnail previews.
 
 > Generated sprite sheets are stored in mpv's cache directory.
+
+<br>
+
+## 🎛️ Configuration
+
+Create a config file at `<OS-SPECIFIC-DIR>/mpv/script-opts/mpv_seekpeek.conf` to customize the script's behavior.
+(Sample config file: [mpv_seekpeek.conf](mpv_seekpeek.conf))
+
+You can also pass options via the command line: `mpv --script-opts=mpv_seekpeek-auto_start=no video.mp4`
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `auto_start` | `yes` | Auto-start sprite generation on playback. Set to `no` to trigger manually with a keybind. |
+| `delete_sprite_on_exit` | `no` | Delete the sprite file when player quits. |
+| `auto_fullscreen` | `yes` | Automatically enter fullscreen on playback start. |
+| `preview_enabled` | `yes` | Enable or disable preview overlay. |
+| `message_duration` | `3` | Duration for OSD messages in seconds. |
+| `thumbnail_interval` | `5` | Seconds between thumbnail samples. (Higher value makes sprite size lower) |
+| `preview_width` | `240` | Preview thumbnail width in pixels. |
+| `preview_height` | `100` | Preview thumbnail height in pixels. |
+| `sprite_grid_rows` | `30` | Sprite sheet grid rows. |
+| `sprite_grid_cols` | `30` | Sprite sheet grid columns. |
+| `key_generate` | `T` | Key to manually trigger sprite generation. |
+| `key_regenerate` | `Ctrl+T` | Key to force regenerate sprite (delete existing and rebuild). |
+| `key_toggle_preview` | `Ctrl+S` | Key to toggle preview overlay on/off. |
+| `key_delete_sprite` | `Alt+T` | Key to delete the cached sprite for the current file. |
+
+### Example config
+
+```ini
+# Disable automatic sprite generation, generate on key press instead
+auto_start=no
+
+# Clean up sprite files when done
+delete_sprite_on_exit=yes
+
+# Don't force fullscreen
+auto_fullscreen=no
+
+# Use a larger preview
+preview_width=320
+preview_height=180
+```
+
+<br>
+
+## ⌨️ Keybindings
+
+| Key | Action |
+| --- | --- |
+| `T` | Manually trigger sprite sheet generation (useful when `auto_start=no`, or to regenerate) |
+| `Ctrl+T` | Force regenerate sprite sheet (deletes existing cache and rebuilds) |
+| `Ctrl+S` | Toggle preview overlay on/off |
+| `Alt+T` | Delete the cached sprite file for the current video |
+
+All keybindings are configurable via the config file above, or via mpv's `input.conf`:
+
+```
+# input.conf example:
+
+Ctrl+t script-binding seekpeek-generate
+Ctrl+Shift+t script-binding seekpeek-regenerate
+p script-binding seekpeek-toggle-preview
+Ctrl+Shift+d script-binding seekpeek-delete-sprite
+```
 
 <br>
 
@@ -89,8 +157,10 @@ YouTube's storyboard system works identically: the player fetches a pre-generate
 ## 🛠️ TODO
 
 - [x] Add Windows OS support
-- [ ] Implement user configuration support
+- [x] Implement user configuration support
+- [x] Add customizable keybindings
 - [ ] Enable robust multi-resolution support
-- [ ] Add customizable keybindings
 - [ ] Improve preview accuracy
 - [ ] Support low accuracy - high speed sprite generation mode
+- [ ] Support for 3rd-party OSC's like ModernZ and UOSC
+- [ ] Support custom mpv-seekpeek sprites directory

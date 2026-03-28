@@ -23,4 +23,13 @@ function helper.isFFmpegAvailable()
     local result = mp.command_native({ name = "subprocess", args = { "ffmpeg", "-version" }, capture_stdout = true })
     return result and result.status == 0
 end
+
+-- Display a message on the OSD and optionally print to console for debugging
+function helper.showMessage(msg, duration, debug)
+    mp.osd_message(msg, duration)
+    if debug then
+        print(msg)
+    end
+end
+
 return helper
