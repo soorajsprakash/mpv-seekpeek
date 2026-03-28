@@ -140,14 +140,16 @@ local function on_playback_start()
 
     Main_sprite = io.open(Sprite_sheet_name, "rb")
     if Main_sprite and Main_sprite:seek("end") > 0 then
+        Main_sprite:seek("set", 0)
         Sprite_generated = true
         helper.showMessage("Pre-generated sprite found, ready for preview", opts.message_duration, true)
-        return
-    end
-
-    if opts.auto_start and not Sprite_generated then
+    elseif opts.auto_start then
+        if Main_sprite then Main_sprite:close() end
+        Main_sprite = nil
         generate_sprite()
     else
+        if Main_sprite then Main_sprite:close() end
+        Main_sprite = nil
         helper.showMessage("Press " .. opts.key_generate .. " to generate sprite sheet", opts.message_duration, true)
     end
 
@@ -172,7 +174,10 @@ end
 mp.register_event("start-file", on_playback_start)
 mp.register_event("end-file", on_playback_end)
 
-mp.register_event("playback-restart", function() CalculateSeekbarPosition() end)
+-- Recalculate seekbar position whenever OSD dimensions change (covers the initial load, fullscreen toggle, window resize, etc.)
+mp.observe_property("osd-dimensions", "native", function(_, val)
+    if val then CalculateSeekbarPosition() end
+end)
 
 
 
