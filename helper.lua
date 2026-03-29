@@ -20,7 +20,7 @@ end
 
 -- Check if ffmpeg is available in the system
 function helper.isFFmpegAvailable()
-    local result = mp.command_native({ name = "subprocess", args = { "ffmpeg", "-version" }, capture_stdout = true })
+    local result = mp.command_native({ name = "subprocess", args = { "ffmpeg", "-version" }, capture_stdout = true, playback_only = false })
     return result and result.status == 0
 end
 
