@@ -81,9 +81,12 @@ local function generate_sprite(force)
 
     Generating_sprite = true
     helper.showMessage("Generating sprite sheet...", opts.message_duration, true)
+    -- @todo: Generate sprite sheet based on the aspect ratio of the video so as to not fill up sprite with empty pads
     local vf = string.format(
-        "fps=1/%d,scale=%d:%d,tile=%dx%d,format=bgra",
+        "fps=1/%d,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d:((ow-iw)/2):((oh-ih)/2):color=black,tile=%dx%d,format=bgra",
         Thumbnail_interval_in_sec,
+        Preview_img_w,
+        Preview_img_h,
         Preview_img_w,
         Preview_img_h,
         Sprite_grid_rows,
