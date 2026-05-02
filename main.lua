@@ -1,3 +1,9 @@
+-- Add throttle
+local last_preview_time = 0
+local preview_interval = 0.05 -- 50ms
+-- Add spam-guard
+local preview_visible = false
+
 local mp = require("mp")
 local options = require("mp.options")
 local helper = require("helper")
@@ -30,7 +36,7 @@ Seekbar_x_end = 0
 Seekbar_y_start = 0
 Seekbar_y_end = 0
 Duration = 0
-Last_overlay_id = math.random(0, 63)
+Last_overlay_id = 1 -- More reliable
 Cache_dir = nil
 Sprite_sheet_name = ""
 Temp_prev_name = ""
@@ -97,7 +103,7 @@ local function generate_sprite(force)
             capture_stdout = true,
             args = { "ffmpeg", "-hide_banner", "-loglevel", "panic", "-i", filepath, "-vf", vf, "-fps_mode", "passthrough", "-f", "rawvideo", Sprite_sheet_name, "-y" },
         },
-        function(val, suc, err)
+        function()
             Generating_sprite = false
             print("@@@@@@@@@@@@@@@@@@@@@")
             local t2 = os.time()
@@ -116,7 +122,9 @@ end
 local function on_playback_start()
     local filename = mp.get_property("filename")
     local filepath = mp.get_property("path")
-    print("filepath: " .. filepath)
+    if filepath then
+      print("filepath: " .. filepath)
+  end
 
     Platform = mp.get_property("platform")
     print("Platform: " .. Platform)
@@ -124,11 +132,11 @@ local function on_playback_start()
     Cache_dir = helper.getCacheDir()
     print("Cache directory: " .. Cache_dir)
 
-    local sprite_name = string.format("%s-sprite.bgra", filename)
-    Sprite_sheet_name = helper.joinPath(Cache_dir, sprite_name)
+    -- local sprite_name = string.format("%s-sprite.bgra", filename)
+    Sprite_sheet_name = helper.joinPath(Cache_dir, ("%s-sprite.bgra"):format(filename))
 
-    local temp_prev_name = string.format("%s-temp.bgra", filename)
-    Temp_prev_name = helper.joinPath(Cache_dir, temp_prev_name)
+    -- local temp_prev_name = string.format("%s-temp.bgra", filename)
+    Temp_prev_name = helper.joinPath(Cache_dir, ("%s-temp.bgra"):format(filename))
 
     -- Reset state for new file
     Sprite_generated = false
@@ -139,19 +147,25 @@ local function on_playback_start()
     helper.showMessage("Beginning mpv-seekpeek magic ----------------^^", opts.message_duration, true)
 
     Main_sprite = io.open(Sprite_sheet_name, "rb")
-    if Main_sprite and Main_sprite:seek("end") > 0 then
-        Main_sprite:seek("set", 0)
-        Sprite_generated = true
-        helper.showMessage("Pre-generated sprite found, ready for preview", opts.message_duration, true)
-    elseif opts.auto_start then
-        if Main_sprite then Main_sprite:close() end
-        Main_sprite = nil
-        generate_sprite()
-    else
-        if Main_sprite then Main_sprite:close() end
-        Main_sprite = nil
-        helper.showMessage("Press " .. opts.key_generate .. " to generate sprite sheet", opts.message_duration, true)
+    if Main_sprite then
+      local size = Main_sprite:seek("end")
+      if size and size > 0 then
+          Main_sprite:seek("set", 0)
+          Sprite_generated = true
+          helper.showMessage("Pre-generated sprite found, ready for preview", opts.message_duration, true)
+      else
+          Main_sprite:close()
+          Main_sprite = nil
+      end
     end
+
+    if not Sprite_generated then
+       if opts.auto_start then
+         generate_sprite()
+       else
+           helper.showMessage("Press " .. opts.key_generate .. " to generate sprite sheet", opts.message_duration, true)
+       end
+  end
 
     if opts.auto_fullscreen then
         mp.set_property("fullscreen", "yes")
@@ -186,6 +200,7 @@ end)
 - This is necessary because the seekbar position can vary based on the video resolution and aspect ratio.
 - The function will be called whenever osd size changes to ensure that the seekbar position is accurate everytime.
 - @todo: Check the same with diff screen resolution
+- NOTE: preview positioning now adapts using Preview_img_h and fallback positioning
 ]] --
 function CalculateSeekbarPosition()
     Video_width, Video_height = mp.get_osd_size()
@@ -203,42 +218,64 @@ mp.observe_property("duration", "number", function()
     Duration = tonumber(value)
 end)
 
-
 mp.observe_property("mouse-pos", "native", function(_, pos)
-    if not pos then return end
+    if not pos or not opts.preview_enabled then
+        return
+    end
+    if Generating_sprite then
+        return
+    end
 
-    mp.commandv("overlay_remove", Last_overlay_id);
+    -- NOTE: throttle preview updates to reduce I/O and overlay spam
+    local now = mp.get_time()
+    if now - last_preview_time < preview_interval then
+        return
+    end
+    last_preview_time = now
 
-    if not opts.preview_enabled then return end
     local mouse_x, mouse_y = pos.x, pos.y
-    if mouse_x >= Seekbar_x_start and mouse_x <= Seekbar_x_end and mouse_y >= Seekbar_y_start and mouse_y <= Seekbar_y_end then
-        print("Mouse is on the seekbar area: " .. mouse_x .. " - " .. mouse_y)
-        --[[
-            * Find the timestamp of the video based on the mouse position on the seekbar. Steps below:
-            * Get the image file,
-            * Show the preview
-            * hide the preview on x change
-        ]]
-        -- @todo: Also only do this if diff bw currentx and last x is more than 5?
-        if (Sprite_generated and Duration and Duration > 0) then
-            local relative_x = (mouse_x - Seekbar_x_start) / (Seekbar_x_end - Seekbar_x_start)
-            local timestamp = relative_x * Duration
-            Last_overlay_id = 5
-            local overlay_x, overlay_y = GetOverlayPosition(mouse_x)
 
-            local res = GetPreviewFromSpriteSheet(timestamp)
-            if (res) then
-                ShowPreviewOverlay(overlay_x, overlay_y)
-            else
-                helper.showMessage("Error extracting preview tile", opts.message_duration, true)
-            end
+    local on_seekbar = mouse_x >= Seekbar_x_start
+        and mouse_x <= Seekbar_x_end
+        and mouse_y >= Seekbar_y_start
+        and mouse_y <= Seekbar_y_end
+
+    -- Hide preview if not on seekbar
+    if not on_seekbar then
+        if preview_visible then
+            mp.commandv("overlay_remove", Last_overlay_id)
+            preview_visible = false
         end
+        return
+    end
+
+    if not (Sprite_generated and Duration and Duration > 0) then
+        return
+    end
+
+    local relative_x = (mouse_x - Seekbar_x_start) / (Seekbar_x_end - Seekbar_x_start)
+    relative_x = math.max(0, math.min(1, relative_x))
+
+    local timestamp = relative_x * Duration
+    local overlay_x, overlay_y = GetOverlayPosition(mouse_x)
+
+    if GetPreviewFromSpriteSheet(timestamp) then
+        ShowPreviewOverlay(overlay_x, overlay_y)
     end
 end)
 
+-- NOTE: dynamic offset based on preview size + fallback if off-screen
 -- Function to get overlay postion
 function GetOverlayPosition(x)
-    return math.floor(x - Preview_img_w / 2), math.floor(Seekbar_y_start - 150)
+	local margin = 20
+	local y = Seekbar_y_start - (Preview_img_h + margin)
+
+	-- If it would go off-screen, place it below instead
+	if y < 0 then
+		y = Seekbar_y_end + margin
+	end
+
+	return math.floor(x - Preview_img_w / 2), math.floor(y)
 end
 
 function ShowPreviewOverlay(x, y)
@@ -253,52 +290,66 @@ function ShowPreviewOverlay(x, y)
         w = Preview_img_w,
         h = Preview_img_h,
         stride = 4 * Preview_img_w,
-    }, function() print("Shown overlay") end)
+    }, function()
+      preview_visible = true
+      --- Uncomment if debugging
+      --  print("Shown overlay")
+    end)
 end
 
 function GetPreviewFromSpriteSheet(timestamp)
-    -- local tile_index = timestamp % (Sprite_grid_rows * Sprite_grid_cols)
-    local tile_index = math.floor(timestamp / Thumbnail_interval_in_sec)
-    local full_w = Preview_img_w * Sprite_grid_cols     -- 240 * 20 = 4800
-    local full_h = Preview_img_h * Sprite_grid_rows     -- 100 * 20 = 2000
-    local bytes_per_pixel = 4                           -- BGRA standard (yeah its heavy)
-    local full_stride = full_w * bytes_per_pixel        -- 19200 (stride size is usually 4 x width as per mpv doc)
-    local tile_stride = Preview_img_w * bytes_per_pixel -- 960
+    if not Main_sprite then
+        Main_sprite = io.open(Sprite_sheet_name, "rb")
+        if not Main_sprite then
+            return false
+        end
+    end
 
-    -- Find the row and column
+    local tile_index = math.floor(timestamp / Thumbnail_interval_in_sec)
+    local max_tiles = Sprite_grid_rows * Sprite_grid_cols
+    -- NOTE: Guard corrupt previews, crashes or the OoB-reads hard limit issue
+    if tile_index >= max_tiles then
+        return false
+    end
+
+    local full_w = Preview_img_w * Sprite_grid_cols
+    local full_stride = full_w * 4
+
     local row_num = math.floor(tile_index / Sprite_grid_cols)
     local col_num = tile_index % Sprite_grid_cols
 
-    -- Byte offset to top-left of tile
-    local y_off = row_num * Preview_img_h -- pixel y
-    local x_off = col_num * Preview_img_w -- pixel x
-    local byte_start = y_off * full_stride + x_off * bytes_per_pixel
+    local y_off = row_num * Preview_img_h
+    local x_off = col_num * Preview_img_w
+    local byte_start = y_off * full_stride + x_off * 4
 
-    -- @todo: Only load a single row of the sprite sheet at a time to reduce memory usage and speed up processing.
-    if not Main_sprite then
-        helper.showMessage("Error: Could not open " .. Sprite_sheet_name, opts.message_duration, true)
-        return false
-    end
+    -- TODO(original): load only needed sprite rows to reduce memory usage
+    -- NOTE: current implementation reads full rows but slices needed region
 
     local temp = io.open(Temp_prev_name, "wb")
     if not temp then
-        helper.showMessage("Error: Could not open " .. Temp_prev_name, opts.message_duration, true)
-        Main_sprite:close()
         return false
     end
 
-    -- Extract 100 rows
     for i = 0, Preview_img_h - 1 do
         local row_byte_start = byte_start + (i * full_stride)
-        Main_sprite:seek("set", row_byte_start)
-        local full_row_data = Main_sprite:read(full_stride)
-        if #full_row_data ~= full_stride then
-            helper.showMessage("Error: Incomplete row read at row " .. (y_off + i), opts.message_duration, true)
-            break
+
+        local ok = pcall(function()
+            Main_sprite:seek("set", row_byte_start)
+        end)
+        if not ok then
+            temp:close()
+            return false
         end
-        local tile_row_data = string.sub(full_row_data, x_off * bytes_per_pixel + 1,
-            (x_off + Preview_img_w) * bytes_per_pixel)
-        temp:write(tile_row_data)
+
+        local full_row_data = Main_sprite:read(full_stride)
+        if not full_row_data or #full_row_data ~= full_stride then
+            temp:close()
+            return false
+        end
+
+        local start = x_off * 4 + 1
+        local stop  = (x_off + Preview_img_w) * 4
+        temp:write(string.sub(full_row_data, start, stop))
     end
 
     temp:close()
@@ -339,7 +390,7 @@ mp.add_key_binding(opts.key_delete_sprite, "seekpeek-delete-sprite", function()
     Main_sprite = nil
     Sprite_generated = false
     mp.commandv("overlay_remove", Last_overlay_id)
-    local ok, err = os.remove(Sprite_sheet_name)
+    local ok = os.remove(Sprite_sheet_name)
     if ok then
         mp.osd_message("Deleted sprite: " .. Sprite_sheet_name)
     else
