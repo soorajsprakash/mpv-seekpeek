@@ -67,16 +67,26 @@ local function generate_sprite(force)
         if Main_sprite then Main_sprite:close() end
         Main_sprite = nil
         Sprite_generated = false
-        os.remove(Sprite_sheet_name)
+        if Sprite_sheet_name ~= "" then os.remove(Sprite_sheet_name) end
         mp.commandv("overlay_remove", Last_overlay_id)
     end
 
     -- Check if sprite already exists
     Main_sprite = io.open(Sprite_sheet_name, "rb")
-    if Main_sprite and Main_sprite:seek("end") > 0 then
-        Sprite_generated = true
-        helper.showMessage("Pre-generated sprite found, ready for preview", opts.message_duration, true)
-        return
+    if Main_sprite then
+        local size = Main_sprite:seek("end")
+
+        if size and size > 0 then
+            Main_sprite:seek("set", 0)
+            Sprite_generated = true
+            helper.showMessage("Pre-generated sprite found, ready for preview", opts.message_duration, true)
+            return
+        else
+            Main_sprite:close()
+            Main_sprite = nil
+            Sprite_generated = false
+            os.remove(Sprite_sheet_name)
+        end
     end
 
     if not helper.isFFmpegAvailable() then
@@ -105,7 +115,7 @@ local function generate_sprite(force)
         },
         function()
             Generating_sprite = false
-            print("@@@@@@@@@@@@@@@@@@@@@")
+            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
             local t2 = os.time()
             local time_dif = os.difftime(t2, t1)
             Main_sprite = io.open(Sprite_sheet_name, "rb")
@@ -114,7 +124,7 @@ local function generate_sprite(force)
             end
             local message = string.format("Finished generating sprite in %d seconds", time_dif)
             helper.showMessage(message, opts.message_duration, true)
-            print("@@@@@@@@@@@@@@@@@@@@@")
+            print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@")
         end
     )
 end
