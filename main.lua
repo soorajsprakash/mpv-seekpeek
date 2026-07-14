@@ -7,10 +7,11 @@ local preview_visible = false
 local mp = require("mp")
 local options = require("mp.options")
 local helper = require("helper")
-
+local utils = require("mp.utils")
 
 -- Script options (configurable via mpv/script-opts/mpv_seekpeek.conf)
 local opts = {
+    sprite_dir = "~~home/sprites", -- Path to custom directory housing your sprites
     auto_start = true,             -- Auto-start sprite generation on playback
     delete_sprite_on_exit = false, -- Delete sprite file when player quits
     auto_fullscreen = true,        -- Automatically set fullscreen on playback start
@@ -37,7 +38,6 @@ Seekbar_y_start = 0
 Seekbar_y_end = 0
 Duration = 0
 Last_overlay_id = 1 -- More reliable
-Cache_dir = nil
 Sprite_sheet_name = ""
 Temp_prev_name = ""
 Sprite_grid_rows = opts.sprite_grid_rows
@@ -139,14 +139,22 @@ local function on_playback_start()
     Platform = mp.get_property("platform")
     print("Platform: " .. Platform)
 
-    Cache_dir = helper.getCacheDir()
-    print("Cache directory: " .. Cache_dir)
+    Sprite_Dir = helper.getSpriteDir(opts.sprite_dir)
+    if not Sprite_Dir then
+        utils.mkdirp(opts.sprite_dir)
+        Sprite_Dir = helper.getSpriteDir(opts.sprite_dir)
+    end
 
     -- local sprite_name = string.format("%s-sprite.bgra", filename)
-    Sprite_sheet_name = helper.joinPath(Cache_dir, ("%s-sprite.bgra"):format(filename))
+    Sprite_sheet_name = helper.joinPath(Sprite_Dir, ("%s-sprite.bgra"):format(filename))
 
     -- local temp_prev_name = string.format("%s-temp.bgra", filename)
-    Temp_prev_name = helper.joinPath(Cache_dir, ("%s-temp.bgra"):format(filename))
+    Temp_prev_name = helper.joinPath(Sprite_Dir, ("%s-temp.bgra"):format(filename))
+
+    print("Sprite directory: " .. Sprite_Dir)
+
+    Cache_dir = helper.getCacheDir()
+    print("Cache directory: " .. Cache_dir)
 
     -- Reset state for new file
     Sprite_generated = false

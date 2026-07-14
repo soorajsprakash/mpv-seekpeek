@@ -18,6 +18,15 @@ function helper.getCacheDir()
     return helper.normalizePath(mp.command_native({ "expand-path", "~~cache/" }))
 end
 
+-- Check and get the sprite directory path
+function helper.getSpriteDir(sprite_dir)
+    if not sprite_dir or sprite_dir == "" then
+        return nil
+    end
+
+    return helper.normalizePath(mp.command_native({ "expand-path", sprite_dir }))
+end
+
 -- Check if ffmpeg is available in the system
 function helper.isFFmpegAvailable()
     local result = mp.command_native({ name = "subprocess", args = { "ffmpeg", "-version" }, capture_stdout = true })
