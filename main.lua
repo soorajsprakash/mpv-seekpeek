@@ -96,6 +96,11 @@ local function generate_sprite(force)
     end
 
     Generating_sprite = true
+
+    if preview_visible then
+    mp.commandv("overlay_remove", Last_overlay_id)
+        preview_visible = false
+    end
     helper.showMessage("Generating sprite sheet...", opts.message_duration, true)
     local vf = string.format(
         "fps=1/%d,scale=%d:%d,tile=%dx%d,format=bgra",
@@ -138,6 +143,7 @@ local function on_playback_start()
 
     Platform = mp.get_property("platform")
     print("Platform: " .. Platform)
+    print(" ")
 
     Sprite_Dir = helper.getSpriteDir(opts.sprite_dir)
     if not Sprite_Dir then
@@ -145,10 +151,7 @@ local function on_playback_start()
         Sprite_Dir = helper.getSpriteDir(opts.sprite_dir)
     end
 
-    -- local sprite_name = string.format("%s-sprite.bgra", filename)
     Sprite_sheet_name = helper.joinPath(Sprite_Dir, ("%s-sprite.bgra"):format(filename))
-
-    -- local temp_prev_name = string.format("%s-temp.bgra", filename)
     Temp_prev_name = helper.joinPath(Sprite_Dir, ("%s-temp.bgra"):format(filename))
 
     print("Sprite directory: " .. Sprite_Dir)
@@ -161,6 +164,7 @@ local function on_playback_start()
     Generating_sprite = false
     if Main_sprite then Main_sprite:close() end
     Main_sprite = nil
+    print(" ")
 
     helper.showMessage("Beginning mpv-seekpeek magic ----------------^^", opts.message_duration, true)
 
@@ -192,11 +196,19 @@ end
 
 
 -- Delete temp prev file on playback end
-local function on_playback_end()
+local function on_playback_end(event)
+    local path = mp.get_property("path")
+
     if Main_sprite then Main_sprite:close() end
     Main_sprite = nil
     Sprite_generated = false
     os.remove(Temp_prev_name)
+
+    if path and (event.reason == "eof" or mp.get_property_bool("eof-reached")) then
+        mp.commandv("delete-watch-later-config", path)
+        print("Deleted watch_later for completed file: " .. path)
+    end
+
     if opts.delete_sprite_on_exit and Sprite_sheet_name ~= "" then
         os.remove(Sprite_sheet_name)
         print("Deleted sprite sheet: " .. Sprite_sheet_name)
@@ -237,10 +249,21 @@ mp.observe_property("duration", "number", function()
 end)
 
 mp.observe_property("mouse-pos", "native", function(_, pos)
-    if not pos or not opts.preview_enabled then
+    if not pos or not opts.preview_enabled then return end
+    if not pos.hover then
+        if preview_visible then
+            -- uncomment if debugging
+            -- print("Removing preview (hover=false)")
+            mp.commandv("overlay_remove", Last_overlay_id)
+            preview_visible = false
+        end
         return
     end
     if Generating_sprite then
+        if preview_visible then
+            mp.commandv("overlay_remove", Last_overlay_id)
+            preview_visible = false
+        end
         return
     end
 
@@ -394,7 +417,10 @@ end)
 mp.add_key_binding(opts.key_toggle_preview, "seekpeek-toggle-preview", function()
     opts.preview_enabled = not opts.preview_enabled
     if not opts.preview_enabled then
+        if preview_visible then
         mp.commandv("overlay_remove", Last_overlay_id)
+            preview_visible = false
+        end
     end
     mp.osd_message("Seekpeek preview: " .. (opts.preview_enabled and "ON" or "OFF"))
 end)
@@ -407,7 +433,10 @@ mp.add_key_binding(opts.key_delete_sprite, "seekpeek-delete-sprite", function()
     if Main_sprite then Main_sprite:close() end
     Main_sprite = nil
     Sprite_generated = false
+    if preview_visible then
     mp.commandv("overlay_remove", Last_overlay_id)
+        preview_visible = false
+    end
     local ok = os.remove(Sprite_sheet_name)
     if ok then
         mp.osd_message("Deleted sprite: " .. Sprite_sheet_name)

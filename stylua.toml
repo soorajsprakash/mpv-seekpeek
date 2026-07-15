@@ -1,0 +1,11 @@
+# "~/.config/nvim/stylua.toml"
+syntax = "All"
+indent_type = "Spaces"
+indent_width = 4
+column_width = 120
+quote_style = "AutoPreferDouble"
+line_endings = "Unix"
+call_parentheses = "Always"
+collapse_simple_statement = "Always"
+[sort_requires]
+enabled = true
