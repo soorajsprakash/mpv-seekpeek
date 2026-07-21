@@ -10,7 +10,9 @@ local helper = require("helper")
 local utils = require("mp.utils")
 
 -- Script options (configurable via mpv/script-opts/mpv_seekpeek.conf)
+-- stylua: ignore
 local opts = {
+    resume_completed_files = false, -- Flag if create resume markers after completed playback
     sprite_dir = "~~home/sprites", -- Path to custom directory housing your sprites
     auto_start = true,             -- Auto-start sprite generation on playback
     delete_sprite_on_exit = false, -- Delete sprite file when player quits
@@ -48,6 +50,9 @@ Thumbnail_interval_in_sec = opts.thumbnail_interval
 Sprite_generated = false
 Platform = nil
 Main_sprite = nil
+
+-- Remember the user's original preference when the script loads
+local original_save_position = mp.get_property_bool("save-position-on-quit")
 
 local Generating_sprite = false
 
@@ -102,6 +107,8 @@ local function generate_sprite(force)
         preview_visible = false
     end
     helper.showMessage("Generating sprite sheet...", opts.message_duration, true)
+    print()
+
     local vf = string.format(
         "fps=1/%d,scale=%d:%d,tile=%dx%d,format=bgra",
         Thumbnail_interval_in_sec,
@@ -112,6 +119,7 @@ local function generate_sprite(force)
     )
     local t1 = os.time()
     -- @todo: Optimise further by generating multi sprite sheet paralelly using "ss -i"
+    -- stylua: ignore
     mp.command_native_async({
             name = "subprocess",
             playback_only = false,
@@ -143,7 +151,7 @@ local function on_playback_start()
 
     Platform = mp.get_property("platform")
     print("Platform: " .. Platform)
-    print(" ")
+    print()
 
     Sprite_Dir = helper.getSpriteDir(opts.sprite_dir)
     if not Sprite_Dir then
@@ -158,13 +166,13 @@ local function on_playback_start()
 
     Cache_dir = helper.getCacheDir()
     print("Cache directory: " .. Cache_dir)
+    print()
 
     -- Reset state for new file
     Sprite_generated = false
     Generating_sprite = false
     if Main_sprite then Main_sprite:close() end
     Main_sprite = nil
-    print(" ")
 
     helper.showMessage("Beginning mpv-seekpeek magic ----------------^^", opts.message_duration, true)
 
@@ -196,23 +204,32 @@ end
 
 
 -- Delete temp prev file on playback end
-local function on_playback_end(event)
-    local path = mp.get_property("path")
-
+local function on_playback_end()
     if Main_sprite then Main_sprite:close() end
     Main_sprite = nil
     Sprite_generated = false
     os.remove(Temp_prev_name)
 
-    if path and (event.reason == "eof" or mp.get_property_bool("eof-reached")) then
-        mp.commandv("delete-watch-later-config", path)
-        print("Deleted watch_later for completed file: " .. path)
-    end
-
     if opts.delete_sprite_on_exit and Sprite_sheet_name ~= "" then
         os.remove(Sprite_sheet_name)
         print("Deleted sprite sheet: " .. Sprite_sheet_name)
+    elseif Sprite_sheet_name ~= "" then
+        print("Stored sprite sheet: " .. Sprite_sheet_name)
     end
+end
+
+-- Prevent mpv from writing a watch_later entry after a completed video.
+-- Restore the user's original setting whenever a new file is loaded.
+mp.register_event("file-loaded", function()
+    if not opts.resume_completed_files then mp.set_property_bool("save-position-on-quit", original_save_position) end
+end)
+
+if not opts.resume_completed_files then
+     mp.observe_property("eof-reached", "bool", function(_, value)
+         if value then
+             mp.set_property_bool("save-position-on-quit", false)
+         end
+    end)
 end
 
 mp.register_event("start-file", on_playback_start)
@@ -250,6 +267,7 @@ end)
 
 mp.observe_property("mouse-pos", "native", function(_, pos)
     if not pos or not opts.preview_enabled then return end
+    -- NOTE: fix lingering thumbnail issue when preview from normal window
     if not pos.hover then
         if preview_visible then
             -- uncomment if debugging

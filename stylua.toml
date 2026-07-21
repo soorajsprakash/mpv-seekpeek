@@ -1,4 +1,3 @@
-# "~/.config/nvim/stylua.toml"
 syntax = "All"
 indent_type = "Spaces"
 indent_width = 4
